@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace FivemCacheDecoder
 {
-    class Program
+    public class Program
     {
         [Verb("list", HelpText = "Decrypt the leveldb and display information.")]
         class ListOptions
@@ -23,7 +23,7 @@ namespace FivemCacheDecoder
             public string WorkingDirectory { get; set; }
         }
         [Verb("decode", HelpText = "Decrypt the resources and extract the rpfs.")]
-        class DecodeOptions
+        public class DecodeOptions
         {
             [Option('c', "cachedir", HelpText = "The fivem cache directory", Required = true)]
             public string CacheDirectory { get; set; }
@@ -50,101 +50,105 @@ namespace FivemCacheDecoder
 
             parsed.WithParsed(opt =>
             {
-
-                var privDir = new DirectoryInfo(Path.Combine(opt.CacheDirectory));
-                if (!privDir.Exists)
-                {
-                    Console.WriteLine("Cache directory not found?");
-                    return;
-                }
-
-                var workDir = string.IsNullOrWhiteSpace(opt.WorkingDirectory) ? Environment.CurrentDirectory : opt.WorkingDirectory;
-                var dbDir = new DirectoryInfo(Path.Combine(workDir, "db"));
-
-                Console.WriteLine("Decrypting database");
-                DecryptDb(new DirectoryInfo(Path.Combine(privDir.FullName, "db")), dbDir);
-
-                Console.WriteLine("Reading entries from database");
-                var entries = ReadDatabaseEntries(dbDir.FullName, out var errorCount);
-                Console.WriteLine("Found {0} entries", entries.Count);
-                Console.WriteLine("Errors reading {0} entries", errorCount);
-
-                var entryLookup = entries.ToLookup(e => e.Filename);
-                var files = new DirectoryInfo(privDir.FullName).GetFiles();
-                var filesLookup = files.ToLookup(f => f.Name);
-
-                var entriesWithFiles = entries.Select(e => new { entry = e, file = filesLookup[e.Filename].FirstOrDefault() }).ToList();
-
-                Console.WriteLine("Skipping {0} entries", entriesWithFiles.Count(e => e.file == null));
-                Console.WriteLine("Skipping {0} files", files.Count(e => !entryLookup[e.Name].Any()));
-                Console.WriteLine("Decrypting {0} files", entriesWithFiles.Count(e => e.file != null));
-
-                foreach (var g in entriesWithFiles.Where(e => e.file != null).GroupBy(e => Tuple.Create(e.entry.ResourceName, e.entry.OriginalFilename)))
-                {
-                    foreach (var entryAndFile in g.OrderByDescending(e => e.file.LastWriteTimeUtc).ToList())
-                    {
-
-                        var entry = entryAndFile.entry;
-                        var input = File.ReadAllBytes(filesLookup[entry.Filename].First().FullName);
-                        var output = Decrypt(DecryptStatic(input), entry.Key, entry.IV);
-
-                        var timeStamp = entryAndFile.file.LastWriteTimeUtc;
-
-                        var outDirStr = Regex.Replace(opt.OutputDirectory, "(%\\w)", res =>
-                        {
-                            switch (res.Groups[1].Value)
-                            {
-                                case "%d":
-                                    return timeStamp.Day.ToString();
-                                case "%m":
-                                    return timeStamp.Month.ToString();
-                                case "%y":
-                                    return timeStamp.Year.ToString();
-                                case "%h":
-                                    return entry.Hash;
-                                case "%n":
-                                    return entry.ResourceName;
-                                case "%s":
-                                    var uri = new Uri(entry.From);
-                                    return uri.Host + "_" + uri.Port;
-
-                            }
-                            return res.Groups[1].Value;
-                        });
-
-                        var outDir = new DirectoryInfo(outDirStr);
-                        if (!outDir.Exists)
-                            outDir.Create();
-                        Directory.SetLastWriteTimeUtc(outDir.FullName, timeStamp);
-
-                        if (Path.GetExtension(entry.OriginalFilename) == ".rpf")
-                        {
-                            var reader = new Rpf2Reader(new MemoryStream(output));
-                            reader.Open();
-                            foreach (var rpfEntry in reader.ReadEntries())
-                            {
-                                var outFn = new FileInfo(Path.Combine(outDir.FullName, rpfEntry.FullName));
-                                if (!outFn.Directory.Exists)
-                                    outFn.Directory.Create();
-                                File.WriteAllBytes(outFn.FullName, rpfEntry.Data);
-                                File.SetLastWriteTimeUtc(outFn.FullName, timeStamp);
-                            }
-
-                        }
-                        else
-                        {
-                            var outFn = Path.Combine(outDir.FullName, entry.OriginalFilename);
-                            File.WriteAllBytes(outFn, output);
-                            File.SetLastWriteTimeUtc(outFn, timeStamp);
-                        }
-
-                        if (!opt.Duplicates)
-                            break;
-                    }
-                }
-                Console.WriteLine("Finished");
+                DecodeVerb(opt);
             });
 
+        }
+
+        public static void DecodeVerb(DecodeOptions opt)
+        {
+            var privDir = new DirectoryInfo(Path.Combine(opt.CacheDirectory));
+            if (!privDir.Exists)
+            {
+                Console.WriteLine("Cache directory not found?");
+                return;
+            }
+
+            var workDir = string.IsNullOrWhiteSpace(opt.WorkingDirectory) ? Environment.CurrentDirectory : opt.WorkingDirectory;
+            var dbDir = new DirectoryInfo(Path.Combine(workDir, "db"));
+
+            Console.WriteLine("Decrypting database");
+            DecryptDb(new DirectoryInfo(Path.Combine(privDir.FullName, "db")), dbDir);
+
+            Console.WriteLine("Reading entries from database");
+            var entries = ReadDatabaseEntries(dbDir.FullName, out var errorCount);
+            Console.WriteLine("Found {0} entries", entries.Count);
+            Console.WriteLine("Errors reading {0} entries", errorCount);
+
+            var entryLookup = entries.ToLookup(e => e.Filename);
+            var files = new DirectoryInfo(privDir.FullName).GetFiles();
+            var filesLookup = files.ToLookup(f => f.Name);
+
+            var entriesWithFiles = entries.Select(e => new { entry = e, file = filesLookup[e.Filename].FirstOrDefault() }).ToList();
+
+            Console.WriteLine("Skipping {0} entries", entriesWithFiles.Count(e => e.file == null));
+            Console.WriteLine("Skipping {0} files", files.Count(e => !entryLookup[e.Name].Any()));
+            Console.WriteLine("Decrypting {0} files", entriesWithFiles.Count(e => e.file != null));
+
+            foreach (var g in entriesWithFiles.Where(e => e.file != null).GroupBy(e => Tuple.Create(e.entry.ResourceName, e.entry.OriginalFilename)))
+            {
+                foreach (var entryAndFile in g.OrderByDescending(e => e.file.LastWriteTimeUtc).ToList())
+                {
+
+                    var entry = entryAndFile.entry;
+                    var input = File.ReadAllBytes(filesLookup[entry.Filename].First().FullName);
+                    var output = Decrypt(DecryptStatic(input), entry.Key, entry.IV);
+
+                    var timeStamp = entryAndFile.file.LastWriteTimeUtc;
+
+                    var outDirStr = Regex.Replace(opt.OutputDirectory, "(%\\w)", res =>
+                    {
+                        switch (res.Groups[1].Value)
+                        {
+                            case "%d":
+                                return timeStamp.Day.ToString();
+                            case "%m":
+                                return timeStamp.Month.ToString();
+                            case "%y":
+                                return timeStamp.Year.ToString();
+                            case "%h":
+                                return entry.Hash;
+                            case "%n":
+                                return entry.ResourceName;
+                            case "%s":
+                                var uri = new Uri(entry.From);
+                                return uri.Host + "_" + uri.Port;
+
+                        }
+                        return res.Groups[1].Value;
+                    });
+
+                    var outDir = new DirectoryInfo(outDirStr);
+                    if (!outDir.Exists)
+                        outDir.Create();
+                    Directory.SetLastWriteTimeUtc(outDir.FullName, timeStamp);
+
+                    if (Path.GetExtension(entry.OriginalFilename) == ".rpf")
+                    {
+                        var reader = new Rpf2Reader(new MemoryStream(output));
+                        reader.Open();
+                        foreach (var rpfEntry in reader.ReadEntries())
+                        {
+                            var outFn = new FileInfo(Path.Combine(outDir.FullName, rpfEntry.FullName));
+                            if (!outFn.Directory.Exists)
+                                outFn.Directory.Create();
+                            File.WriteAllBytes(outFn.FullName, rpfEntry.Data);
+                            File.SetLastWriteTimeUtc(outFn.FullName, timeStamp);
+                        }
+
+                    }
+                    else
+                    {
+                        var outFn = Path.Combine(outDir.FullName, entry.OriginalFilename);
+                        File.WriteAllBytes(outFn, output);
+                        File.SetLastWriteTimeUtc(outFn, timeStamp);
+                    }
+
+                    if (!opt.Duplicates)
+                        break;
+                }
+            }
+            Console.WriteLine("Finished");
         }
 
         static byte[] TryDecodeByteArray(object o, int size)
