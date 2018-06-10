@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Windows.Forms;
-using static FivemCacheDecoder.Program;
 
 namespace FivemCacheDecoder.Gui
 {
@@ -16,18 +13,22 @@ namespace FivemCacheDecoder.Gui
 
         private void button1_Click(object sender, EventArgs e)
         {
-            using (var ofd = new FolderBrowserDialog())
-                if (ofd.ShowDialog() == DialogResult.OK)
-                    CacheDirBox.Text = ofd.SelectedPath;
+            var folderSelectDialog = new FolderSelectDialog();
+            folderSelectDialog.Title = "Cache directory";
 
+            if (folderSelectDialog.Show()) {
+                CacheDirBox.Text = folderSelectDialog.FileName;
+            }
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
-            using (var ofd = new FolderBrowserDialog())
-                if (ofd.ShowDialog() == DialogResult.OK)
-                    OutputDirBox.Text = ofd.SelectedPath;
+            var folderSelectDialog = new FolderSelectDialog();
+            folderSelectDialog.Title = "Output directory";
 
+            if (folderSelectDialog.Show()) {
+                OutputDirBox.Text = folderSelectDialog.FileName;
+            }
         }
 
         private void button3_Click(object sender, EventArgs e)
